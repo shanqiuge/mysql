@@ -134,8 +134,8 @@ docker_temp_server_stop() {
 
 # Verify that the minimally required password settings are set for new databases.
 docker_verify_minimum_env() {
-	if [ -z "$MYSQL_ROOT_PASSWORD" -a -z "$MYSQL_ALLOW_EMPTY_PASSWORD" -a -z "$MYSQL_RANDOM_ROOT_PASSWORD" ]; then
-		mysql_error $'Database is uninitialized and password option is not specified\n\tYou need to specify one of MYSQL_ROOT_PASSWORD, MYSQL_ALLOW_EMPTY_PASSWORD and MYSQL_RANDOM_ROOT_PASSWORD'
+	if [ -z "$MYSQL_ROOT_PASSWORD" -a -z "$MYSQL_ALLOW_EMPTY_PASSWORD" -a -z "$MYSQL_RANDOM_ROOT_PASSWORD" -a -z "$MYSQL_REPL_PASSWORD" ]; then
+		mysql_error $'Database is uninitialized and password option is not specified\n\tYou need to specify one of MYSQL_ROOT_PASSWORD, MYSQL_ALLOW_EMPTY_PASSWORD and MYSQL_RANDOM_ROOT_PASSWORD,$MYSQL_REPL_PASSWORD'
 	fi
 }
 
@@ -186,6 +186,8 @@ docker_setup_env() {
 	file_env 'MYSQL_USER'
 	file_env 'MYSQL_PASSWORD'
 	file_env 'MYSQL_ROOT_PASSWORD'
+        file_env 'MYSQL_REPL_USER'
+        file_env 'MYSQL_REPL_PASSWORD'
 
 	declare -g DATABASE_ALREADY_EXISTS
 	if [ -d "$DATADIR/mysql" ]; then
@@ -284,11 +286,17 @@ docker_setup_db() {
 
 		if [ -n "$MYSQL_DATABASE" ]; then
 			mysql_note "Giving user ${MYSQL_USER} access to schema ${MYSQL_DATABASE}"
-			docker_process_sql --database=mysql <<<"GRANT ALL ON \`$MYSQL_DATABASE\`.* TO '$MYSQL_USER'@'%' ;"
+			docker_process_sql --database=mysql <<<"GRANT ALL ON \`${MYSQL_DATABASE//_/\\_}\`.* TO '$MYSQL_USER'@'%' ;"
 		fi
 
 		docker_process_sql --database=mysql <<<"FLUSH PRIVILEGES ;"
 	fi
+        if [ -n "$MYSQL_REPL_USER" ] && [ -n "$MYSQL_REPL_PASSWORD" ]; then
+                mysql_note "Creating user ${MYSQL_REPL_USER}"
+                docker_process_sql --database=mysql <<<"CREATE USER '$MYSQL_REPL_USER'@'%' IDENTIFIED BY '$MYSQL_REPL_PASSWORD' ;"
+                docker_process_sql --database=mysql <<<"GRANT REPLICATION SLAVE ON *.* TO '$MYSQL_REPL_USER'@'%' ;"
+                docker_process_sql --database=mysql <<<"FLUSH PRIVILEGES ;"
+        fi
 }
 
 _mysql_passfile() {
